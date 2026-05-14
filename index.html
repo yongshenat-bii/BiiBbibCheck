@@ -95,10 +95,10 @@
     letter-spacing: 0.1em;
     background: rgba(0,0,0,0.55);
     border: 2px solid #fff;
+    opacity: 0.5;
   }
   .badge.warn { background: #ffcc00; color: #1a1a1a; border-color: #ffcc00; }
   .badge.off  { background: #e35747; color: #fff;     border-color: #e35747; }
-  .badge.on   { background: #2ecc71; color: #1a1a1a;  border-color: #2ecc71; }
   /* Tap zones (invisible) */
   .zone {
     position: fixed;
@@ -249,11 +249,7 @@
   function refreshBanner() {
     const parts = [];
     if (paused) parts.push(`<span class="badge warn">PAUSED</span>`);
-    parts.push(
-      pollingEnabled
-        ? `<span class="badge on">POLLING: ON</span>`
-        : `<span class="badge off">POLLING: OFF</span>`
-    );
+    if (!pollingEnabled) parts.push(`<span class="badge off">POLLING: OFF</span>`);
     banner.innerHTML = parts.join("");
     document.getElementById("btnPause").textContent = paused ? "▶" : "⏸";
   }
