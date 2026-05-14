@@ -76,13 +76,84 @@
     font-size: 0.85rem;
     opacity: 0.35;
   }
+  /* Big status banner (PAUSED / POLLING OFF) */
+  #banner {
+    position: fixed;
+    top: 2vh;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 1vw;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .badge {
+    padding: 0.6vh 1.6vw;
+    border-radius: 999px;
+    font-size: clamp(1rem, 2vw, 1.6rem);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    background: rgba(0,0,0,0.55);
+    border: 2px solid #fff;
+  }
+  .badge.warn { background: #ffcc00; color: #1a1a1a; border-color: #ffcc00; }
+  .badge.off  { background: #e35747; color: #fff;     border-color: #e35747; }
+  .badge.on   { background: #2ecc71; color: #1a1a1a;  border-color: #2ecc71; }
+  /* Tap zones (invisible) */
+  .zone {
+    position: fixed;
+    top: 0; bottom: 0;
+    width: 33.33vw;
+    z-index: 2;
+    background: transparent;
+  }
+  #zoneLeft   { left: 0; }
+  #zoneCenter { left: 33.33vw; }
+  #zoneRight  { right: 0; }
+  /* On-screen control bar */
+  #controls {
+    position: fixed;
+    bottom: 4vh;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 1.2vw;
+    z-index: 10;
+    transition: opacity 0.4s ease;
+  }
+  #controls.hidden { opacity: 0; pointer-events: none; }
+  .ctrl {
+    width: clamp(56px, 8vw, 96px);
+    height: clamp(56px, 8vw, 96px);
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.7);
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: clamp(1.5rem, 3vw, 2.4rem);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ctrl:active { background: rgba(255,255,255,0.2); }
 </style>
 </head>
 <body>
   <div id="stage"><div class="idle">Hello, are you ready to race?</div></div>
   <div id="status"></div>
   <div id="countdown"></div>
-  <div id="help">Space: pause &nbsp;·&nbsp; ←: previous &nbsp;·&nbsp; →: next &nbsp;·&nbsp; P: polling on/off</div>
+  <div id="banner"></div>
+  <div class="zone" id="zoneLeft"></div>
+  <div class="zone" id="zoneCenter"></div>
+  <div class="zone" id="zoneRight"></div>
+  <div id="controls">
+    <button class="ctrl" id="btnPrev" title="Previous">⏮</button>
+    <button class="ctrl" id="btnPause" title="Pause/Resume">⏸</button>
+    <button class="ctrl" id="btnNext" title="Next">⏭</button>
+    <button class="ctrl" id="btnPoll" title="Polling on/off">⏻</button>
+  </div>
+  <div id="help">Tap left/right to skip · center to pause · long-press to toggle polling &nbsp;·&nbsp; keys: Space ← → P</div>
 
 <script>
 (() => {
@@ -171,7 +242,22 @@
       pollTimer = null;
       status.textContent = `polling stopped · queue ${queue.length}`;
     }
+    refreshBanner();
   }
+
+  const banner = document.getElementById("banner");
+  function refreshBanner() {
+    const parts = [];
+    if (paused) parts.push(`<span class="badge warn">PAUSED</span>`);
+    parts.push(
+      pollingEnabled
+        ? `<span class="badge on">POLLING: ON</span>`
+        : `<span class="badge off">POLLING: OFF</span>`
+    );
+    banner.innerHTML = parts.join("");
+    document.getElementById("btnPause").textContent = paused ? "▶" : "⏸";
+  }
+  function togglePause() { paused = !paused; refreshBanner(); updateCountdown(); }
 
   function render(entry) {
     if (!entry) {
@@ -259,23 +345,55 @@
   }
 
   document.addEventListener("keydown", (e) => {
-    if (e.code === "Space") {
-      e.preventDefault();
-      paused = !paused;
-      updateCountdown();
-    } else if (e.code === "ArrowRight") {
-      e.preventDefault();
-      advance();
-    } else if (e.code === "ArrowLeft") {
-      e.preventDefault();
-      previous();
-    } else if (e.code === "KeyP") {
-      e.preventDefault();
-      setPolling(!pollingEnabled);
-    }
+    if (e.code === "Space") { e.preventDefault(); togglePause(); }
+    else if (e.code === "ArrowRight") { e.preventDefault(); advance(); }
+    else if (e.code === "ArrowLeft") { e.preventDefault(); previous(); }
+    else if (e.code === "KeyP") { e.preventDefault(); setPolling(!pollingEnabled); }
   });
 
+  // On-screen buttons
+  document.getElementById("btnPrev").addEventListener("click", previous);
+  document.getElementById("btnNext").addEventListener("click", advance);
+  document.getElementById("btnPause").addEventListener("click", togglePause);
+  document.getElementById("btnPoll").addEventListener("click", () => setPolling(!pollingEnabled));
+
+  // Tap zones (with long-press detection for polling toggle)
+  function bindZone(id, onTap) {
+    const el = document.getElementById(id);
+    let pressedAt = 0, longFired = false, timer = null;
+    const start = () => {
+      pressedAt = Date.now();
+      longFired = false;
+      timer = setTimeout(() => { longFired = true; setPolling(!pollingEnabled); }, 700);
+    };
+    const end = (e) => {
+      clearTimeout(timer);
+      if (!longFired && Date.now() - pressedAt < 700) onTap();
+      e.preventDefault();
+    };
+    el.addEventListener("pointerdown", start);
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", () => clearTimeout(timer));
+  }
+  bindZone("zoneLeft", previous);
+  bindZone("zoneCenter", togglePause);
+  bindZone("zoneRight", advance);
+
+  // Auto-hide control bar
+  const controls = document.getElementById("controls");
+  let hideTimer = null;
+  function showControls() {
+    controls.classList.remove("hidden");
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => controls.classList.add("hidden"), 3000);
+  }
+  ["pointermove", "pointerdown", "keydown"].forEach(ev =>
+    window.addEventListener(ev, showControls)
+  );
+  showControls();
+
   // Boot
+  refreshBanner();
   poll().then(() => {
     advance();
     tickTimer = setInterval(tick, 1000);
