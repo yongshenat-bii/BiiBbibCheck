@@ -12,7 +12,7 @@
   html, body { height: 100%; width: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   body {
     background:
-      linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)),
+      linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.25)),
       var(--bg-image);
     background-size: cover;
     background-position: center;
@@ -79,7 +79,7 @@
 </style>
 </head>
 <body>
-  <div id="stage"><div class="idle">Waiting for runners…</div></div>
+  <div id="stage"><div class="idle">Hello, are you ready to race?</div></div>
   <div id="status"></div>
   <div id="countdown"></div>
   <div id="help">Space: pause &nbsp;·&nbsp; ←: previous &nbsp;·&nbsp; →: next</div>
@@ -148,7 +148,7 @@
 
   function render(entry) {
     if (!entry) {
-      stage.innerHTML = `<div class="idle">Waiting for runners…</div>`;
+      stage.innerHTML = `<div class="idle">Hello, are you ready to race?</div>`;
       return;
     }
     const nameLine = entry.name && entry.name !== entry.bib
