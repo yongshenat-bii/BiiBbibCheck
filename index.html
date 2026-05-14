@@ -82,7 +82,7 @@
   <div id="stage"><div class="idle">Hello, are you ready to race?</div></div>
   <div id="status"></div>
   <div id="countdown"></div>
-  <div id="help">Space: pause &nbsp;·&nbsp; ←: previous &nbsp;·&nbsp; →: next</div>
+  <div id="help">Space: pause &nbsp;·&nbsp; ←: previous &nbsp;·&nbsp; →: next &nbsp;·&nbsp; P: polling on/off</div>
 
 <script>
 (() => {
@@ -130,8 +130,10 @@
 
   let idleStreak = 0;
   let pollTimer = null;
+  let pollingEnabled = true;
 
   async function poll() {
+    if (!pollingEnabled) return;
     let added = 0;
     try {
       const res = await fetch(PROXY_URL, { method: "POST" });
@@ -153,8 +155,21 @@
     } catch (e) {
       status.textContent = `error: ${e.message}`;
     } finally {
-      const next = idleStreak >= IDLE_THRESHOLD ? POLL_SLOW_MS : POLL_FAST_MS;
-      pollTimer = setTimeout(poll, next);
+      if (pollingEnabled) {
+        const next = idleStreak >= IDLE_THRESHOLD ? POLL_SLOW_MS : POLL_FAST_MS;
+        pollTimer = setTimeout(poll, next);
+      }
+    }
+  }
+
+  function setPolling(on) {
+    pollingEnabled = on;
+    if (on) {
+      poll();
+    } else {
+      clearTimeout(pollTimer);
+      pollTimer = null;
+      status.textContent = `polling stopped · queue ${queue.length}`;
     }
   }
 
@@ -254,6 +269,9 @@
     } else if (e.code === "ArrowLeft") {
       e.preventDefault();
       previous();
+    } else if (e.code === "KeyP") {
+      e.preventDefault();
+      setPolling(!pollingEnabled);
     }
   });
 
