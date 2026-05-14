@@ -206,10 +206,11 @@
   function previous() {
     if (history.length === 0) return;
     if (historyIdx === -1) {
-      // Currently on a live entry that's already in history (last item).
-      // Step back to the one before it.
-      if (history.length < 2) return;
-      historyIdx = history.length - 2;
+      // At "live". If idle (no current), the last history item hasn't been
+      // re-shown, so go to it. Otherwise current === last history item, so
+      // step back one further.
+      historyIdx = current == null ? history.length - 1 : history.length - 2;
+      if (historyIdx < 0) return;
     } else if (historyIdx > 0) {
       historyIdx--;
     } else {
