@@ -53,9 +53,13 @@
     position: fixed;
     bottom: 2vh;
     right: 2vw;
-    font-size: 1.2rem;
-    opacity: 0.4;
+    font-size: clamp(3rem, 6vw, 6rem);
+    font-weight: 700;
+    line-height: 1;
+    opacity: 0.55;
+    font-variant-numeric: tabular-nums;
   }
+  #countdown.paused { color: #ffcc00; opacity: 0.85; }
   #status {
     position: fixed;
     top: 2vh;
@@ -63,12 +67,20 @@
     font-size: 0.9rem;
     opacity: 0.4;
   }
+  #help {
+    position: fixed;
+    bottom: 2vh;
+    left: 2vw;
+    font-size: 0.85rem;
+    opacity: 0.35;
+  }
 </style>
 </head>
 <body>
   <div id="stage"><div class="idle">Waiting for runners…</div></div>
   <div id="status"></div>
   <div id="countdown"></div>
+  <div id="help">Space: pause &nbsp;·&nbsp; ←: previous &nbsp;·&nbsp; →: next</div>
 
 <script>
 (() => {
@@ -85,8 +97,13 @@
   const countdownEl = document.getElementById("countdown");
 
   const queue = [];
+  const history = [];          // entries already shown (for ← previous)
+  let historyIdx = -1;          // -1 = at "live"; 0..n-1 = viewing past entry
   const seen = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"));
   let current = null;
+  let paused = false;
+  let remaining = 0;            // seconds left on current entry
+  let tickTimer = null;
 
   const saveSeen = () => {
     // Cap to last 5000 to keep localStorage tidy
@@ -147,37 +164,90 @@
     }[c]));
   }
 
-  let countdownTimer = null;
-  function showNext() {
-    clearInterval(countdownTimer);
-    if (queue.length === 0) {
-      current = null;
-      render(null);
-      countdownEl.textContent = "";
-      // Check again shortly
-      setTimeout(showNext, 1000);
-      return;
-    }
-    current = queue.shift();
+  function updateCountdown() {
+    if (current == null) { countdownEl.textContent = ""; return; }
+    const label = paused ? `⏸ ${remaining}` : `${remaining}`;
+    countdownEl.textContent = label;
+    countdownEl.classList.toggle("paused", paused);
+  }
+
+  function showEntry(entry, { resetTimer = true } = {}) {
+    current = entry;
     stage.classList.add("fade");
     setTimeout(() => {
       render(current);
       stage.classList.remove("fade");
     }, 200);
-
-    let remaining = Math.ceil(DISPLAY_MS / 1000);
-    countdownEl.textContent = `${remaining}s · queue ${queue.length}`;
-    countdownTimer = setInterval(() => {
-      remaining--;
-      countdownEl.textContent = `${remaining}s · queue ${queue.length}`;
-    }, 1000);
-    setTimeout(showNext, DISPLAY_MS);
+    if (resetTimer) remaining = Math.ceil(DISPLAY_MS / 1000);
+    updateCountdown();
   }
+
+  function advance() {
+    // If we were viewing history, step forward through it first.
+    if (historyIdx >= 0 && historyIdx < history.length - 1) {
+      historyIdx++;
+      showEntry(history[historyIdx]);
+      return;
+    }
+    // Otherwise pull from the live queue.
+    historyIdx = -1;
+    if (queue.length === 0) {
+      current = null;
+      render(null);
+      countdownEl.textContent = "";
+      return;
+    }
+    const next = queue.shift();
+    history.push(next);
+    if (history.length > 500) history.shift();
+    showEntry(next);
+  }
+
+  function previous() {
+    if (history.length === 0) return;
+    if (historyIdx === -1) {
+      // Currently on a live entry that's already in history (last item).
+      // Step back to the one before it.
+      if (history.length < 2) return;
+      historyIdx = history.length - 2;
+    } else if (historyIdx > 0) {
+      historyIdx--;
+    } else {
+      return;
+    }
+    showEntry(history[historyIdx]);
+  }
+
+  function tick() {
+    if (paused || current == null) return;
+    remaining--;
+    if (remaining <= 0) {
+      advance();
+    } else {
+      updateCountdown();
+    }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space") {
+      e.preventDefault();
+      paused = !paused;
+      updateCountdown();
+    } else if (e.code === "ArrowRight") {
+      e.preventDefault();
+      advance();
+    } else if (e.code === "ArrowLeft") {
+      e.preventDefault();
+      previous();
+    }
+  });
 
   // Boot
   poll().then(() => {
     setInterval(poll, POLL_MS);
-    showNext();
+    setInterval(() => { status.textContent = `connected · queue ${queue.length}`; }, 500);
+    advance();
+    tickTimer = setInterval(tick, 1000);
   });
 })();
 </script>
