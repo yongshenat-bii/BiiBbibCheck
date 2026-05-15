@@ -160,9 +160,7 @@
   // === CONFIG ===
   // After deploying worker.js to Cloudflare, paste its URL here:
   const PROXY_URL = "https://bib-proxy.yongshenat.workers.dev";
-  const POLL_FAST_MS = 2000;        // active polling speed
-  const POLL_SLOW_MS = 10000;       // idle polling speed
-  const IDLE_THRESHOLD = 10;        // polls with no new data before slowing
+  const POLL_MS = 2000;
   const DISPLAY_MS = 5000;
   const SEEN_KEY = "bibscan.seen.v1";
   // ==============
@@ -199,13 +197,11 @@
 
   const keyOf = (r) => `${r.bib}@${r.passTime}`;
 
-  let idleStreak = 0;
   let pollTimer = null;
   let pollingEnabled = true;
 
   async function poll() {
     if (!pollingEnabled) return;
-    let added = 0;
     try {
       const res = await fetch(PROXY_URL, { method: "POST" });
       const json = await res.json();
@@ -217,19 +213,13 @@
         if (!r.bib || seen.has(k)) continue;
         seen.add(k);
         queue.push(r);
-        added++;
       }
       saveSeen();
-      idleStreak = added > 0 ? 0 : idleStreak + 1;
-      const mode = idleStreak >= IDLE_THRESHOLD ? "idle" : "active";
-      status.textContent = `connected · queue ${queue.length} · ${mode}`;
+      status.textContent = `connected · queue ${queue.length}`;
     } catch (e) {
       status.textContent = `error: ${e.message}`;
     } finally {
-      if (pollingEnabled) {
-        const next = idleStreak >= IDLE_THRESHOLD ? POLL_SLOW_MS : POLL_FAST_MS;
-        pollTimer = setTimeout(poll, next);
-      }
+      if (pollingEnabled) pollTimer = setTimeout(poll, POLL_MS);
     }
   }
 
