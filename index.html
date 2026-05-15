@@ -331,7 +331,12 @@
   }
 
   function tick() {
-    if (paused || current == null) return;
+    if (paused) return;
+    if (current == null) {
+      // Idle — try to pick up newly-arrived entries.
+      if (queue.length > 0) advance();
+      return;
+    }
     remaining--;
     if (remaining <= 0) {
       advance();
