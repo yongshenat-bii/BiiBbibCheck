@@ -53,7 +53,7 @@
   }
   #countdown {
     position: fixed;
-    bottom: 2vh;
+    bottom: 10vh;
     right: 2vw;
     font-size: clamp(3rem, 6vw, 6rem);
     font-weight: 700;
@@ -137,6 +137,68 @@
     -webkit-tap-highlight-color: transparent;
   }
   .ctrl:active { background: rgba(255,255,255,0.2); }
+  /* Settings gear */
+  #settingsBtn {
+    position: fixed;
+    bottom: 2vh;
+    right: 2vw;
+    width: clamp(44px, 5vw, 64px);
+    height: clamp(44px, 5vw, 64px);
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.7);
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: clamp(1.2rem, 2vw, 1.8rem);
+    cursor: pointer;
+    z-index: 10;
+    transition: opacity 0.4s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #settingsBtn.hidden { opacity: 0; pointer-events: none; }
+  /* Settings modal */
+  #settingsModal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  #settingsModal.open { display: flex; }
+  .modal-card {
+    background: #1a1a2e;
+    color: #fff;
+    border-radius: 12px;
+    padding: 4vh 5vw;
+    min-width: min(420px, 90vw);
+    text-align: left;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+  .modal-card h2 { font-size: 1.5rem; margin-bottom: 2vh; }
+  .modal-card label { display: block; font-size: 0.9rem; opacity: 0.8; margin-bottom: 0.4rem; margin-top: 1.4vh; }
+  .modal-card input {
+    width: 100%;
+    padding: 0.9rem;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    border: 1px solid #444;
+    background: #0f0f1e;
+    color: #fff;
+  }
+  .modal-actions { display: flex; gap: 1rem; margin-top: 3vh; justify-content: flex-end; }
+  .modal-actions button {
+    padding: 0.8rem 1.6rem;
+    font-size: 1rem;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn-save   { background: #2ecc71; color: #1a1a1a; }
+  .btn-cancel { background: #444;    color: #fff; }
 </style>
 </head>
 <body>
@@ -154,6 +216,20 @@
     <button class="ctrl" id="btnPoll" title="Polling on/off">⏻</button>
   </div>
   <div id="help">Tap left/right to skip · center to pause · long-press to toggle polling &nbsp;·&nbsp; keys: Space ← → P</div>
+  <button id="settingsBtn" title="Settings">⚙</button>
+  <div id="settingsModal">
+    <div class="modal-card">
+      <h2>Event Settings</h2>
+      <label for="cfgRaceId">Race ID</label>
+      <input id="cfgRaceId" type="text" inputmode="numeric" />
+      <label for="cfgPortalId">Portal ID</label>
+      <input id="cfgPortalId" type="text" inputmode="numeric" />
+      <div class="modal-actions">
+        <button class="btn-cancel" id="cfgCancel">Cancel</button>
+        <button class="btn-save" id="cfgSave">Save</button>
+      </div>
+    </div>
+  </div>
 
 <script>
 (() => {
@@ -164,8 +240,19 @@
   const POLL_SLOW_MS = 10000;       // idle polling speed
   const IDLE_THRESHOLD = 10;        // polls with no new data before slowing
   const DISPLAY_MS = 1000;
-  const SEEN_KEY = "bibscan.seen.v1";
+  const CFG_KEY = "bibscan.cfg.v1";
+  const DEFAULT_CFG = { raceId: "105191", portalId: "1" };
   // ==============
+
+  function loadCfg() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(CFG_KEY) || "null");
+      return Object.assign({}, DEFAULT_CFG, raw || {});
+    } catch { return { ...DEFAULT_CFG }; }
+  }
+  function saveCfg(c) { localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
+  let cfg = loadCfg();
+  const seenKey = () => `bibscan.seen.${cfg.raceId}.${cfg.portalId}`;
 
   const stage = document.getElementById("stage");
   const status = document.getElementById("status");
@@ -174,7 +261,7 @@
   const queue = [];
   const history = [];          // entries already shown (for ← previous)
   let historyIdx = -1;          // -1 = at "live"; 0..n-1 = viewing past entry
-  const seen = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"));
+  let seen = new Set(JSON.parse(localStorage.getItem(seenKey()) || "[]"));
   let current = null;
   let paused = false;
   let remaining = 0;            // seconds left on current entry
@@ -183,7 +270,7 @@
   const saveSeen = () => {
     // Cap to last 5000 to keep localStorage tidy
     const arr = [...seen].slice(-5000);
-    localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
+    localStorage.setItem(seenKey(), JSON.stringify(arr));
   };
 
   const flatten = (row) => {
@@ -207,7 +294,12 @@
     if (!pollingEnabled) return;
     let added = 0;
     try {
-      const res = await fetch(PROXY_URL, { method: "POST" });
+      const body = `partner=000001&raceId=${encodeURIComponent(cfg.raceId)}&portalId=${encodeURIComponent(cfg.portalId)}`;
+      const res = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      });
       const json = await res.json();
       const rows = (json.obj && json.obj["1_1_1"]) || [];
       // Iterate oldest→newest (portal returns newest first, so reverse)
@@ -380,18 +472,59 @@
   bindZone("zoneCenter", togglePause);
   bindZone("zoneRight", advance);
 
-  // Auto-hide control bar
+  // Auto-hide control bar + settings gear
   const controls = document.getElementById("controls");
+  const settingsBtn = document.getElementById("settingsBtn");
   let hideTimer = null;
   function showControls() {
     controls.classList.remove("hidden");
+    settingsBtn.classList.remove("hidden");
     clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => controls.classList.add("hidden"), 3000);
+    hideTimer = setTimeout(() => {
+      controls.classList.add("hidden");
+      settingsBtn.classList.add("hidden");
+    }, 3000);
   }
   ["pointermove", "pointerdown", "keydown"].forEach(ev =>
     window.addEventListener(ev, showControls)
   );
   showControls();
+
+  // Settings modal
+  const modal = document.getElementById("settingsModal");
+  const cfgRaceId = document.getElementById("cfgRaceId");
+  const cfgPortalId = document.getElementById("cfgPortalId");
+  function openSettings() {
+    cfgRaceId.value = cfg.raceId;
+    cfgPortalId.value = cfg.portalId;
+    modal.classList.add("open");
+  }
+  function closeSettings() { modal.classList.remove("open"); }
+  settingsBtn.addEventListener("click", openSettings);
+  document.getElementById("cfgCancel").addEventListener("click", closeSettings);
+  document.getElementById("cfgSave").addEventListener("click", () => {
+    const newCfg = {
+      raceId: cfgRaceId.value.trim() || DEFAULT_CFG.raceId,
+      portalId: cfgPortalId.value.trim() || DEFAULT_CFG.portalId,
+    };
+    const changed = newCfg.raceId !== cfg.raceId || newCfg.portalId !== cfg.portalId;
+    cfg = newCfg;
+    saveCfg(cfg);
+    if (changed) {
+      // Different event — reset queue, history, and seen-set (scoped per event).
+      queue.length = 0;
+      history.length = 0;
+      historyIdx = -1;
+      current = null;
+      render(null);
+      seen = new Set(JSON.parse(localStorage.getItem(seenKey()) || "[]"));
+      // Restart polling immediately with new config.
+      clearTimeout(pollTimer);
+      if (pollingEnabled) poll();
+    }
+    closeSettings();
+  });
+  modal.addEventListener("click", (e) => { if (e.target === modal) closeSettings(); });
 
   // Boot
   refreshBanner();
