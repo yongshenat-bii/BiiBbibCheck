@@ -6,8 +6,17 @@
 <title>BibScan Live</title>
 <style>
   :root {
-    --bg-image: url("biibbibcheck-bg.jpg");
+    --bg-landscape: url("biibbibcheck-bg.jpg");
+    --bg-portrait:  url("biibbibcheck-bg-portrait.jpg");
+    --bg-image: var(--bg-landscape);
   }
+  /* Auto: follow real screen orientation */
+  @media (orientation: portrait) {
+    :root { --bg-image: var(--bg-portrait); }
+  }
+  /* Manual overrides (body class beats media query) */
+  body.force-landscape { --bg-image: var(--bg-landscape) !important; }
+  body.force-portrait  { --bg-image: var(--bg-portrait)  !important; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; width: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   body {
@@ -29,28 +38,25 @@
     transition: opacity 0.4s ease;
   }
   #stage.fade { opacity: 0; }
-  .bib {
-    font-size: clamp(6.4rem, 17.6vw, 19.2rem);
-    font-weight: 900;
-    line-height: 1;
-    letter-spacing: -0.02em;
+  .bib      { font-size: clamp(6.4rem, 17.6vw, 19.2rem); font-weight: 900; line-height: 1; letter-spacing: -0.02em; }
+  .name     { font-size: clamp(2.5rem, 6vw, 6rem);  font-weight: 600; margin-top: 2vh; text-transform: uppercase; }
+  .category { font-size: clamp(1.2rem, 3vw, 3rem);  font-weight: 400; margin-top: 1.5vh; opacity: 0.85; }
+  .idle     { font-size: clamp(2.25rem, 6vw, 4.5rem); opacity: 0.6; }
+  /* Portrait sizing — scale off height (vh) so text stays big on narrow screens */
+  @media (orientation: portrait) {
+    .bib      { font-size: clamp(6.4rem, 17.6vh, 19.2rem); }
+    .name     { font-size: clamp(2.5rem, 6vh, 6rem); }
+    .category { font-size: clamp(1.2rem, 3vh, 3rem); }
+    .idle     { font-size: clamp(2.25rem, 6vh, 4.5rem); }
   }
-  .name {
-    font-size: clamp(2.5rem, 6vw, 6rem);
-    font-weight: 600;
-    margin-top: 2vh;
-    text-transform: uppercase;
-  }
-  .category {
-    font-size: clamp(1.2rem, 3vw, 3rem);
-    font-weight: 400;
-    margin-top: 1.5vh;
-    opacity: 0.85;
-  }
-  .idle {
-    font-size: clamp(2.25rem, 6vw, 4.5rem);
-    opacity: 0.6;
-  }
+  body.force-landscape .bib      { font-size: clamp(6.4rem, 17.6vw, 19.2rem) !important; }
+  body.force-landscape .name     { font-size: clamp(2.5rem, 6vw, 6rem) !important; }
+  body.force-landscape .category { font-size: clamp(1.2rem, 3vw, 3rem) !important; }
+  body.force-landscape .idle     { font-size: clamp(2.25rem, 6vw, 4.5rem) !important; }
+  body.force-portrait  .bib      { font-size: clamp(6.4rem, 17.6vh, 19.2rem) !important; }
+  body.force-portrait  .name     { font-size: clamp(2.5rem, 6vh, 6rem) !important; }
+  body.force-portrait  .category { font-size: clamp(1.2rem, 3vh, 3rem) !important; }
+  body.force-portrait  .idle     { font-size: clamp(2.25rem, 6vh, 4.5rem) !important; }
   #countdown {
     position: fixed;
     bottom: 10vh;
@@ -224,6 +230,12 @@
       <input id="cfgRaceId" type="text" inputmode="numeric" />
       <label for="cfgPortalId">Portal ID</label>
       <input id="cfgPortalId" type="text" inputmode="numeric" />
+      <label for="cfgLayout">Layout</label>
+      <select id="cfgLayout" style="width:100%;padding:0.9rem;font-size:1.1rem;border-radius:8px;border:1px solid #444;background:#0f0f1e;color:#fff;">
+        <option value="auto">Auto (follow screen)</option>
+        <option value="landscape">Force Landscape</option>
+        <option value="portrait">Force Portrait</option>
+      </select>
       <div class="modal-actions">
         <button class="btn-cancel" id="cfgCancel">Cancel</button>
         <button class="btn-save" id="cfgSave">Save</button>
@@ -241,7 +253,7 @@
   const IDLE_THRESHOLD = 10;        // polls with no new data before slowing
   const DISPLAY_MS = 1000;
   const CFG_KEY = "bibscan.cfg.v1";
-  const DEFAULT_CFG = { raceId: "105191", portalId: "1" };
+  const DEFAULT_CFG = { raceId: "105191", portalId: "1", layout: "auto" };
   // ==============
 
   function loadCfg() {
@@ -253,6 +265,11 @@
   function saveCfg(c) { localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
   let cfg = loadCfg();
   const seenKey = () => `bibscan.seen.${cfg.raceId}.${cfg.portalId}`;
+  function applyLayout() {
+    document.body.classList.remove("force-landscape", "force-portrait");
+    if (cfg.layout === "landscape") document.body.classList.add("force-landscape");
+    else if (cfg.layout === "portrait") document.body.classList.add("force-portrait");
+  }
 
   const stage = document.getElementById("stage");
   const status = document.getElementById("status");
@@ -494,9 +511,11 @@
   const modal = document.getElementById("settingsModal");
   const cfgRaceId = document.getElementById("cfgRaceId");
   const cfgPortalId = document.getElementById("cfgPortalId");
+  const cfgLayout = document.getElementById("cfgLayout");
   function openSettings() {
     cfgRaceId.value = cfg.raceId;
     cfgPortalId.value = cfg.portalId;
+    cfgLayout.value = cfg.layout || "auto";
     modal.classList.add("open");
   }
   function closeSettings() { modal.classList.remove("open"); }
@@ -506,11 +525,13 @@
     const newCfg = {
       raceId: cfgRaceId.value.trim() || DEFAULT_CFG.raceId,
       portalId: cfgPortalId.value.trim() || DEFAULT_CFG.portalId,
+      layout: cfgLayout.value || "auto",
     };
-    const changed = newCfg.raceId !== cfg.raceId || newCfg.portalId !== cfg.portalId;
+    const eventChanged = newCfg.raceId !== cfg.raceId || newCfg.portalId !== cfg.portalId;
     cfg = newCfg;
     saveCfg(cfg);
-    if (changed) {
+    applyLayout();
+    if (eventChanged) {
       // Different event — reset queue, history, and seen-set (scoped per event).
       queue.length = 0;
       history.length = 0;
@@ -527,6 +548,7 @@
   modal.addEventListener("click", (e) => { if (e.target === modal) closeSettings(); });
 
   // Boot
+  applyLayout();
   refreshBanner();
   poll().then(() => {
     advance();
