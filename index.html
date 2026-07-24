@@ -318,7 +318,10 @@
         body,
       });
       const json = await res.json();
-      const rows = (json.obj && json.obj["1_1_1"]) || [];
+      // Portal returns data under a key like "1_1_1" or "2_1_1" depending on portalId.
+      // Grab whatever key is there rather than hardcoding portal 1.
+      const objKey = json.obj ? Object.keys(json.obj)[0] : null;
+      const rows = (objKey && json.obj[objKey]) || [];
       // Iterate oldest→newest (portal returns newest first, so reverse)
       const flat = rows.map(flatten).reverse();
       for (const r of flat) {
