@@ -230,6 +230,16 @@
       <input id="cfgRaceId" type="text" inputmode="numeric" />
       <label for="cfgPortalId">Portal ID</label>
       <input id="cfgPortalId" type="text" inputmode="numeric" />
+      <label>Landscape background <span id="bgLandInfo" style="opacity:0.6;font-weight:400;"></span></label>
+      <div style="display:flex;gap:0.5rem;align-items:center;">
+        <input id="cfgBgLandscape" type="file" accept="image/*" style="flex:1;font-size:0.9rem;color:#ccc;" />
+        <button type="button" id="bgLandReset" style="padding:0.5rem 0.8rem;border-radius:6px;border:none;background:#444;color:#fff;cursor:pointer;font-size:0.85rem;">Reset</button>
+      </div>
+      <label>Portrait background <span id="bgPortInfo" style="opacity:0.6;font-weight:400;"></span></label>
+      <div style="display:flex;gap:0.5rem;align-items:center;">
+        <input id="cfgBgPortrait" type="file" accept="image/*" style="flex:1;font-size:0.9rem;color:#ccc;" />
+        <button type="button" id="bgPortReset" style="padding:0.5rem 0.8rem;border-radius:6px;border:none;background:#444;color:#fff;cursor:pointer;font-size:0.85rem;">Reset</button>
+      </div>
       <label for="cfgLayout">Layout</label>
       <select id="cfgLayout" style="width:100%;padding:0.9rem;font-size:1.1rem;border-radius:8px;border:1px solid #444;background:#0f0f1e;color:#fff;">
         <option value="auto">Auto (follow screen)</option>
@@ -265,6 +275,25 @@
   function saveCfg(c) { localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
   let cfg = loadCfg();
   const seenKey = () => `bibscan.seen.${cfg.raceId}.${cfg.portalId}`;
+  const BG_LAND_KEY = "bibscan.bg.landscape";
+  const BG_PORT_KEY = "bibscan.bg.portrait";
+  function applyBackgrounds() {
+    const land = localStorage.getItem(BG_LAND_KEY);
+    const port = localStorage.getItem(BG_PORT_KEY);
+    const root = document.documentElement.style;
+    if (land) root.setProperty("--bg-landscape", `url("${land}")`);
+    else root.removeProperty("--bg-landscape");
+    if (port) root.setProperty("--bg-portrait", `url("${port}")`);
+    else root.removeProperty("--bg-portrait");
+  }
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
   function applyLayout() {
     document.body.classList.remove("force-landscape", "force-portrait");
     if (cfg.layout === "landscape") document.body.classList.add("force-landscape");
@@ -519,8 +548,48 @@
     cfgRaceId.value = cfg.raceId;
     cfgPortalId.value = cfg.portalId;
     cfgLayout.value = cfg.layout || "auto";
+    document.getElementById("bgLandInfo").textContent =
+      localStorage.getItem(BG_LAND_KEY) ? "(custom uploaded)" : "(using default)";
+    document.getElementById("bgPortInfo").textContent =
+      localStorage.getItem(BG_PORT_KEY) ? "(custom uploaded)" : "(using default)";
+    document.getElementById("cfgBgLandscape").value = "";
+    document.getElementById("cfgBgPortrait").value = "";
     modal.classList.add("open");
   }
+
+  async function handleBgUpload(input, storageKey, infoId) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) {
+      alert("Image is larger than 3 MB. Please use a smaller image (JPG recommended).");
+      input.value = "";
+      return;
+    }
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      localStorage.setItem(storageKey, dataUrl);
+      applyBackgrounds();
+      document.getElementById(infoId).textContent = "(custom uploaded)";
+    } catch (e) {
+      alert("Failed to load image: " + e.message);
+    }
+  }
+  document.getElementById("cfgBgLandscape").addEventListener("change", (e) =>
+    handleBgUpload(e.target, BG_LAND_KEY, "bgLandInfo"));
+  document.getElementById("cfgBgPortrait").addEventListener("change", (e) =>
+    handleBgUpload(e.target, BG_PORT_KEY, "bgPortInfo"));
+  document.getElementById("bgLandReset").addEventListener("click", () => {
+    localStorage.removeItem(BG_LAND_KEY);
+    applyBackgrounds();
+    document.getElementById("bgLandInfo").textContent = "(using default)";
+    document.getElementById("cfgBgLandscape").value = "";
+  });
+  document.getElementById("bgPortReset").addEventListener("click", () => {
+    localStorage.removeItem(BG_PORT_KEY);
+    applyBackgrounds();
+    document.getElementById("bgPortInfo").textContent = "(using default)";
+    document.getElementById("cfgBgPortrait").value = "";
+  });
   function closeSettings() { modal.classList.remove("open"); }
   settingsBtn.addEventListener("click", openSettings);
   document.getElementById("cfgCancel").addEventListener("click", closeSettings);
@@ -551,6 +620,7 @@
   modal.addEventListener("click", (e) => { if (e.target === modal) closeSettings(); });
 
   // Boot
+  applyBackgrounds();
   applyLayout();
   refreshBanner();
   poll().then(() => {
